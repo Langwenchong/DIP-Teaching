@@ -17,15 +17,8 @@ Fill the [Missing Part](run_global_transform.py#L21) of 'run_global_transform.py
 
 Implement MLS or RBF based image deformation in the [Missing Part](run_point_transform.py#L52) of 'run_point_transform.py'.
 
----
-## 一个作业提交模板 (里面的结果也可参考)
-
 
 ## Implementation of Image Geometric Transformation
-
-This repository is Yudong Guo's implementation of Assignment_01 of DIP. 
-
-<img src="pics/teaser.png" alt="alt text" width="800">
 
 ## Requirements
 
@@ -60,3 +53,5 @@ python run_point_transform.py
 ## Acknowledgement
 
 >📋 Thanks for the algorithms proposed by [Image Deformation Using Moving Least Squares](https://people.engr.tamu.edu/schaefer/research/mls.pdf).
+>
+>ref blog: https://blog.csdn.net/qq_14845119/article/details/123401102
