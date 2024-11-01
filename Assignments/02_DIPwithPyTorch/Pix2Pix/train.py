@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 from facades_dataset import FacadesDataset
 from FCN_network import FullyConvNetwork
 from torch.optim.lr_scheduler import StepLR
+from tqdm import tqdm
 
 def tensor_to_image(tensor):
     """
@@ -69,8 +70,8 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, epoch, num_
     """
     model.train()
     running_loss = 0.0
-
-    for i, (image_rgb, image_semantic) in enumerate(dataloader):
+    loop = tqdm(enumerate(dataloader), total=len(dataloader),position=0,ncols=120,desc=f"Training Epoch [{epoch + 1}/{num_epochs}]")
+    for i, (image_rgb, image_semantic) in loop:
         # Move data to the device
         image_rgb = image_rgb.to(device)
         image_semantic = image_semantic.to(device)
@@ -96,7 +97,9 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, epoch, num_
         running_loss += loss.item()
 
         # Print loss information
-        print(f'Epoch [{epoch + 1}/{num_epochs}], Step [{i + 1}/{len(dataloader)}], Loss: {loss.item():.4f}')
+        # print(f'Epoch [{epoch + 1}/{num_epochs}], Step [{i + 1}/{len(dataloader)}], Loss: {loss.item():.4f}')
+        # loop.set_description(f'Epoch [{epoch + 1}/{num_epochs}], Step [{i + 1}/{len(dataloader)}]\n')
+        loop.set_postfix(loss=loss.item())
 
 def validate(model, dataloader, criterion, device, epoch, num_epochs):
     """
@@ -114,7 +117,8 @@ def validate(model, dataloader, criterion, device, epoch, num_epochs):
     val_loss = 0.0
 
     with torch.no_grad():
-        for i, (image_rgb, image_semantic) in enumerate(dataloader):
+        loop = tqdm(enumerate(dataloader), total=len(dataloader),position=0,ncols=120,desc=f"Validation Epoch [{epoch + 1}/{num_epochs}]")
+        for i, (image_rgb, image_semantic) in loop:
             # Move data to the device
             image_rgb = image_rgb.to(device)
             image_semantic = image_semantic.to(device)

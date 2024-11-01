@@ -1,4 +1,4 @@
-FILE=facades
+FILE=maps
 # URL=http://efrosgans.eecs.berkeley.edu/pix2pix/datasets/$FILE.tar.gz
 # TAR_FILE=./datasets/$FILE.tar.gz
 TARGET_DIR=./datasets/$FILE/
