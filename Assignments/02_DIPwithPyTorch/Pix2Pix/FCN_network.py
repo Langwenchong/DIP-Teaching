@@ -31,7 +31,7 @@ class FullyConvNetwork(nn.Module):
         ### FILL: add ConvTranspose Layers
         ### None: since last layer outputs RGB channels, may need specific activation function
 
-        decoder_channels = [128,64,32,16,8,3]
+        decoder_channels = [256,128,64,32,16,8,3]
         self.decoder = nn.Sequential()
         for in_channels, out_channels in zip(decoder_channels[:-1], decoder_channels[1:]):
             self.decoder.add_module(

@@ -170,7 +170,7 @@ def main():
         scheduler.step()
 
         # Save model checkpoint every 20 epochs
-        if (epoch + 1) % 20 == 0:
+        if (epoch + 1) % 50 == 0:
             os.makedirs('checkpoints', exist_ok=True)
             torch.save(model.state_dict(), f'checkpoints/pix2pix_model_epoch_{epoch + 1}.pth')
 
