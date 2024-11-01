@@ -2,6 +2,8 @@ import gradio as gr
 from PIL import ImageDraw
 import numpy as np
 import torch
+import cv2
+from torch.nn import functional as F
 
 # Initialize the polygon state
 def initialize_polygon():
@@ -109,11 +111,14 @@ def create_mask_from_points(points, img_h, img_w):
     ### FILL: Obtain Mask from Polygon Points. 
     ### 0 indicates outside the Polygon.
     ### 255 indicates inside the Polygon.
+    points = np.array(points, dtype=np.int32)
+    cv2.fillPoly(mask, [points], 255)
+
 
     return mask
 
 # Calculate the Laplacian loss between the foreground and blended image
-def cal_laplacian_loss(foreground_img, foreground_mask, blended_img, background_mask):
+def cal_laplacian_loss(foreground_img, foreground_mask, blended_img, background_mask,box_fg,box_bg):
     """
     Computes the Laplacian loss between the foreground and blended images within the masks.
 
@@ -126,9 +131,14 @@ def cal_laplacian_loss(foreground_img, foreground_mask, blended_img, background_
     Returns:
         torch.Tensor: The computed Laplacian loss.
     """
-    loss = torch.tensor(0.0, device=foreground_img.device)
     ### FILL: Compute Laplacian Loss with https://pytorch.org/docs/stable/generated/torch.nn.functional.conv2d.html.
     ### Note: The loss is computed within the masks.
+    kernel = torch.tensor([[0, 1, 0], [1, -4, 1], [0, 1, 0]], device=foreground_img.device).float().unsqueeze(0).repeat(1,3,1,1)
+    laplacian_fg = F.conv2d(foreground_img, kernel, padding=1)
+    laplacian_bg = F.conv2d(blended_img, kernel, padding=1)
+    laplacian_fg_mask = foreground_mask * laplacian_fg
+    laplacian_bg_mask = background_mask * laplacian_bg
+    loss = torch.sum((laplacian_fg_mask[0,0,box_fg[0,0]:box_fg[1,0],box_fg[0,1]:box_fg[1,1]] - laplacian_bg_mask[0,0,box_bg[0,0]:box_bg[1,0],box_bg[0,1]:box_bg[1,1]]) ** 2)/torch.sum(foreground_mask)
 
     return loss
 
@@ -169,6 +179,18 @@ def blending(foreground_image_original, background_image_original, dx, dy, polyg
     fg_mask_tensor = torch.from_numpy(foreground_mask).to(device).unsqueeze(0).unsqueeze(0).float() / 255.
     bg_mask_tensor = torch.from_numpy(background_mask).to(device).unsqueeze(0).unsqueeze(0).float() / 255.
 
+    # 图片分辨率不同时mask的位置不同需要记录以便后面进行loss计算
+    min_fore_x = np.min(foreground_polygon_points[:,1])
+    min_fore_y = np.min(foreground_polygon_points[:,0])
+    max_fore_x = np.max(foreground_polygon_points[:,1])
+    max_fore_y = np.max(foreground_polygon_points[:,0])
+    min_blend_x = np.min(background_polygon_points[:,1])
+    min_blend_y = np.min(background_polygon_points[:,0])
+    max_blend_x = np.max(background_polygon_points[:,1])
+    max_blend_y = np.max(background_polygon_points[:,0])
+    box_fg = torch.tensor([[min_fore_x, min_fore_y], [max_fore_x, max_fore_y]]).detach()
+    box_bg = torch.tensor([[min_blend_x, min_blend_y], [max_blend_x, max_blend_y]]).detach()
+
     # Initialize blended image
     blended_img = bg_img_tensor.clone()
     mask_expanded = bg_mask_tensor.bool().expand(-1, 3, -1, -1)
@@ -183,7 +205,7 @@ def blending(foreground_image_original, background_image_original, dx, dy, polyg
     for step in range(iter_num):
         blended_img_for_loss = blended_img.detach() * (1. - bg_mask_tensor) + blended_img * bg_mask_tensor  # Only blending in the mask region
 
-        loss = cal_laplacian_loss(fg_img_tensor, fg_mask_tensor, blended_img_for_loss, bg_mask_tensor)
+        loss = cal_laplacian_loss(fg_img_tensor, fg_mask_tensor, blended_img_for_loss, bg_mask_tensor,box_fg,box_bg)
 
         optimizer.zero_grad()
         loss.backward()
