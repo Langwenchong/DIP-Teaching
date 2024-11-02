@@ -9,6 +9,9 @@ from facades_dataset import FacadesDataset
 from FCN_network import FullyConvNetwork
 from torch.optim.lr_scheduler import StepLR
 from tqdm import tqdm
+# 引入tensorboard
+from torch.utils.tensorboard import SummaryWriter
+from datetime import datetime
 
 def tensor_to_image(tensor):
     """
@@ -84,7 +87,7 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, epoch, num_
 
         # Save sample images every 5 epochs
         if epoch % 5 == 0 and i == 0:
-            save_images(image_rgb, image_semantic, outputs, 'train_results', epoch)
+            save_images(image_rgb, image_semantic, outputs, 'train_results', epoch, num_images=10)
 
         # Compute the loss
         loss = criterion(outputs, image_semantic)
@@ -100,6 +103,10 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, epoch, num_
         # print(f'Epoch [{epoch + 1}/{num_epochs}], Step [{i + 1}/{len(dataloader)}], Loss: {loss.item():.4f}')
         # loop.set_description(f'Epoch [{epoch + 1}/{num_epochs}], Step [{i + 1}/{len(dataloader)}]\n')
         loop.set_postfix(loss=loss.item())
+
+    avg_train_loss = running_loss / len(dataloader)
+    print(f'Epoch [{epoch + 1}/{num_epochs}], Training Loss: {avg_train_loss:.4f}')
+    return avg_train_loss
 
 def validate(model, dataloader, criterion, device, epoch, num_epochs):
     """
@@ -132,19 +139,30 @@ def validate(model, dataloader, criterion, device, epoch, num_epochs):
 
             # Save sample images every 5 epochs
             if epoch % 5 == 0 and i == 0:
-                save_images(image_rgb, image_semantic, outputs, 'val_results', epoch)
+                save_images(image_rgb, image_semantic, outputs, 'val_results', epoch, num_images=10)
 
     # Calculate average validation loss
     avg_val_loss = val_loss / len(dataloader)
     print(f'Epoch [{epoch + 1}/{num_epochs}], Validation Loss: {avg_val_loss:.4f}')
+    return avg_val_loss
 
 def main():
     """
     Main function to set up the training and validation processes.
     """
+
+    best_val_loss = 1000
     # Set device to GPU if available
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
+    # 添加一个时间戳
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    writer = {
+        'train': SummaryWriter(f'logs/{timestamp}/train'),
+        'val': SummaryWriter(f'logs/{timestamp}/val'),
+        'lr': SummaryWriter(f'logs/{timestamp}/lr'),
+        "model": SummaryWriter(f'logs/{timestamp}/model')
+    }
     # Initialize datasets and dataloaders
     train_dataset = FacadesDataset(list_file='train_list.txt')
     val_dataset = FacadesDataset(list_file='val_list.txt')
@@ -154,6 +172,7 @@ def main():
 
     # Initialize model, loss function, and optimizer
     model = FullyConvNetwork().to(device)
+    writer['model'].add_graph(model, torch.randn(1, 3, 256, 256).to(device))
     criterion = nn.L1Loss()
     optimizer = optim.Adam(model.parameters(), lr=0.001, betas=(0.5, 0.999))
 
@@ -163,16 +182,22 @@ def main():
     # Training loop
     num_epochs = 800
     for epoch in range(num_epochs):
-        train_one_epoch(model, train_loader, optimizer, criterion, device, epoch, num_epochs)
-        validate(model, val_loader, criterion, device, epoch, num_epochs)
+        avg_train_loss = train_one_epoch(model, train_loader, optimizer, criterion, device, epoch, num_epochs)
+        avg_val_loss = validate(model, val_loader, criterion, device, epoch, num_epochs)
+
+        # Log the losses to TensorBoard
+        writer['train'].add_scalar('Loss', avg_train_loss, epoch)
+        writer['val'].add_scalar('Loss', avg_val_loss, epoch)
+        writer['lr'].add_scalar('Learning Rate', optimizer.param_groups[0]['lr'], epoch)
 
         # Step the scheduler after each epoch
         scheduler.step()
 
         # Save model checkpoint every 20 epochs
-        if (epoch + 1) % 50 == 0:
+        if (epoch + 1) % 20 == 0 and avg_val_loss < best_val_loss:
             os.makedirs('checkpoints', exist_ok=True)
             torch.save(model.state_dict(), f'checkpoints/pix2pix_model_epoch_{epoch + 1}.pth')
+            best_val_loss = avg_val_loss
 
 if __name__ == '__main__':
     main()

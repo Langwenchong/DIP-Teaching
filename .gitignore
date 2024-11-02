@@ -1,5 +1,8 @@
 __pycache__
-*.png
-*.jpg
+.vscode
+train_results/
+val_results/
+datasets/
 *.pth
 *.txt
+logs
