@@ -6,3 +6,4 @@ datasets/
 *.pth
 *.txt
 logs
+model.py
