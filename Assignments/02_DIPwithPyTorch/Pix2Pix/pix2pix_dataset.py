@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import Dataset
 import cv2
 
-class FacadesDataset(Dataset):
+class Pix2PixDataset(Dataset):
     def __init__(self, list_file):
         """
         Args:

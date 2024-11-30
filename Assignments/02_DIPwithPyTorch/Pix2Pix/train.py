@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from facades_dataset import FacadesDataset
+from pix2pix_dataset import Pix2PixDataset
 from FCN_network import FullyConvNetwork
 from torch.optim.lr_scheduler import StepLR
 from tqdm import tqdm
