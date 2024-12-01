@@ -4,6 +4,7 @@ import torch
 import numpy as np
 import imageio
 from PIL import Image
+from PIL import ImageDraw
 import uuid
 
 from . import utils
@@ -188,6 +189,13 @@ def on_show_save():
 
 
 def on_image_change(model, image_size, image):
+    # 添加fa显示
+    preds = fa.get_landmarks(image)
+    draw = ImageDraw.Draw(image)
+    if preds is not None:
+        for pred in preds:
+            for i in range(pred.shape[0]):
+                draw.ellipse([pred[i][0] - 3, pred[i][1] - 3, pred[i][0] + 3, pred[i][1] + 1], fill='yellow')
     image = Image.fromarray(image)
     result = inverse_image(
         model.g_ema,
@@ -266,6 +274,24 @@ def main():
         size = gr.State(CKPT_SIZE[DEFAULT_CKPT])
         target_point = gr.State(False)
 
+        close_eye_points = {'target': [], 'handle': []}
+
+        img = np.array(img)
+        preds = fa.get_landmarks(img)
+        img = Image.fromarray(img)
+        draw = ImageDraw.Draw(img)
+        for pred in preds:
+            # 闭眼将上眼关键点靠近下眼
+            close_eye_points['handle'] = [[pred[37, 1], pred[37, 0]], [pred[38, 1], pred[38, 0]],
+                                          [pred[43, 1], pred[43, 0]], [pred[44, 1], pred[44, 0]]]
+            close_eye_points['target'] = [[pred[41, 1], pred[41, 0]], [pred[40, 1], pred[40, 0]],
+                                          [pred[47, 1], pred[47, 0]], [pred[46, 1], pred[46, 0]]]
+            # 绘制颜色
+            for i in range(pred.shape[0]):
+                draw.ellipse([pred[i][0] - 3, pred[i][1] - 3, pred[i][0] + 3, pred[i][1] + 3], fill='yellow')
+
+        preds = gr.State(preds)
+        close_eye_points = gr.State(close_eye_points)
         with gr.Row():
             with gr.Column(scale=0.3):
                 with gr.Accordion("Model"):
@@ -285,7 +311,7 @@ def main():
                             undo_btn = gr.Button('Undo Last')
                     with gr.Row():
                         btn = gr.Button('Drag it', variant='primary')
-
+                        close_eye_btn = gr.Button('Close Eye', variant='primary')
                 with gr.Accordion('Save', visible=False) as save_panel:
                     files = gr.Files(value=[])
 
@@ -302,6 +328,10 @@ def main():
         image.upload(on_image_change, [model, size, image], [image, mask, state, points, target_point])
         mask.upload(on_mask_change, [mask], [image])
         btn.click(on_drag, inputs=[model, points, max_iters, state, size, mask, lr_box], outputs=[image, state, progress]).then(
+            on_show_save, outputs=save_panel).then(
+            on_save_files, inputs=[image, state], outputs=[files]
+        )
+        close_eye_btn.click(on_drag, inputs=[model, close_eye_points, max_iters, state, size, mask, lr_box], outputs=[image, state, progress]).then(
             on_show_save, outputs=save_panel).then(
             on_save_files, inputs=[image, state], outputs=[files]
         )
