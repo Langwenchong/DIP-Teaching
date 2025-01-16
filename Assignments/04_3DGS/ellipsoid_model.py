@@ -17,7 +17,7 @@ class GaussianParameters:
     rotations: torch.Tensor   # (N, 4) Quaternions
     scales: torch.Tensor      # (N, 3) Log-space scales
 
-class GaussianModel(nn.Module):
+class EllipsoidModel(nn.Module):
     def __init__(self, points3D_xyz: torch.Tensor, points3D_rgb: torch.Tensor):
         """
         Initialize 3D Gaussian Splatting model
@@ -112,7 +112,9 @@ class GaussianModel(nn.Module):
         # Compute covariance
         ### FILL:
         ### Covs3d = ...
-        Covs3d = R  @ S @ S @ R.transpose(-2, -1)
+        Covs3d = R @ S @ S @ R.transpose(-2, -1)
+        # Covs3d = torch.bmm(S, torch.bmm(R, S.transpose(-2, -1)))
+
         return Covs3d
 
     def get_gaussian_params(self) -> GaussianParameters:
@@ -129,9 +131,17 @@ class GaussianModel(nn.Module):
     def forward(self) -> Dict[str, torch.Tensor]:
         """Forward pass returns dictionary of parameters"""
         params = self.get_gaussian_params()
+        R = self._compute_rotation_matrices()
+        
+        # Convert scales from log space and create diagonal matrices
+        scales = torch.exp(self.scales)
+        # S = torch.diag_embed(scales)
         return {
             'positions': params.positions,
             'covariance': params.covariance,
             'colors': params.colors,
-            'opacities': params.opacities
+            'opacities': params.opacities,
+            'rotations': R,
+            'scales': scales
+
         }

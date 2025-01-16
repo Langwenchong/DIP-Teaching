@@ -10,8 +10,8 @@ from dataclasses import dataclass
 import cv2
 import os
 
-from gaussian_model import GaussianModel
-from gaussian_renderer import GaussianRenderer
+from ellipsoid_model import EllipsoidModel
+from ellipsoid_renderer import EllipsoidRenderer
 from data_utils import ColmapDataset
 
 @dataclass
@@ -26,11 +26,11 @@ class TrainConfig:
     debug_every: int = 1  # Save debug images every N epochs
     debug_samples: int = 1  # Number of images to save for debugging
 
-class GaussianTrainer:
+class EllipsodiTrainer:
     def __init__(
         self, 
-        model: GaussianModel,
-        renderer: GaussianRenderer,
+        model: EllipsoidModel,
+        renderer: EllipsoidRenderer,
         config: TrainConfig,
         device: torch.device
     ):
@@ -146,7 +146,13 @@ class GaussianTrainer:
         # Release video writer
         out.release()
         print(f"Video saved to: {save_vid_path}")
-        
+
+    def get_ray_directions(self, H, W, K) -> torch.Tensor:
+        i, j = torch.meshgrid(torch.arange(W), torch.arange(H), indexing='ij')
+        i = i.t().cuda()
+        j = j.t().cuda()
+        directions = torch.stack([(i - K[0, 2]) / K[0, 0], (j - K[1, 2]) / K[1, 1], torch.ones_like(i)], dim=-1)
+        return torch.nn.functional.normalize(directions, dim=-1)        
 
     def train_step(self, batch: dict, in_train = True) -> float:
         """Single training step"""
@@ -156,29 +162,46 @@ class GaussianTrainer:
         R = batch['R'].to(self.device)                     # (B, 3, 3)
         t = batch['t'].to(self.device).reshape(-1, 3)      # (B, 3)
         
-        # Forward pass
-        gaussian_params = self.model()
-        rendered_images = self.renderer(
-            means3D=gaussian_params['positions'],
-            covs3d=gaussian_params['covariance'],
-            colors=gaussian_params['colors'],
-            opacities=gaussian_params['opacities'],
-            K = K.squeeze(0),
-            R = R.squeeze(0),
-            t = t.squeeze(0),
-        )
-        rendered_images = rendered_images.unsqueeze(0)
-        
-        if not in_train:
-            return rendered_images
-
-        # Compute RGB loss
-        loss = torch.abs(rendered_images - images).mean()
-        
-        # Backward pass
+        H, W = images.shape[1:3]
+        ray_d = self.get_ray_directions(H, W, K.squeeze(0)).view(-1, 3)
+        # ind = torch.randperm(H*W)[:1000]
+        # ray_d = ray_d[ind]
+        # ray_o = torch.zeros_like(ray_d)
         self.optimizer.zero_grad()
-        loss.backward()
         
+        ray_list = torch.split(ray_d, 1000, dim=0)
+
+        # Forward pass
+        images_list = []
+        for i, ray_d in enumerate(ray_list):
+            ray_o = torch.zeros_like(ray_d)
+            gaussian_params = self.model()
+            rendered_images = self.renderer(
+                means3D=gaussian_params['positions'],
+                # covs3d=gaussian_params['covariance'],
+                rays_o=ray_o,
+                rays_d=ray_d,
+                rotations=gaussian_params['rotations'],
+                scales=gaussian_params['scales'],
+                colors=gaussian_params['colors'],
+                opacities=gaussian_params['opacities'],
+                K = K.squeeze(0),
+                R = R.squeeze(0),
+                t = t.squeeze(0),
+            )
+            rendered_images = rendered_images.unsqueeze(0)
+            images_list.append(rendered_images)
+            
+            if not in_train:
+                return rendered_images
+
+            # Compute RGB loss
+            # images = images.view(-1, H*W, 3)[:, ind, :]
+            loss = torch.abs(rendered_images - images.view(-1, H*W, 3)[:, i*1000:(i+1)*1000]).mean()
+            
+            # Backward pass
+            loss.backward()
+        rendered_images = torch.cat(images_list, dim=1).view(-1, H, W, 3)
         # Gradient clipping
         torch.nn.utils.clip_grad_norm_(
             self.model.parameters(), 
@@ -301,7 +324,7 @@ def main():
     )
     
     # Initialize dataset
-    dataset = ColmapDataset(args.colmap_dir,downsample_factor=4)
+    dataset = ColmapDataset(args.colmap_dir)
     train_loader = DataLoader(
         dataset,
         batch_size=config.batch_size,
@@ -315,19 +338,19 @@ def main():
     H, W = sample.shape[:2]
     
     # Initialize model using COLMAP points
-    model = GaussianModel(
+    model = EllipsoidModel(
         points3D_xyz=dataset.points3D_xyz,
         points3D_rgb=dataset.points3D_rgb
     )
     
     # Initialize renderer
-    renderer = GaussianRenderer(
+    renderer = EllipsoidRenderer(
         image_height=H,
         image_width=W
     )
     
     # Initialize trainer
-    trainer = GaussianTrainer(model, renderer, config, device)
+    trainer = EllipsodiTrainer(model, renderer, config, device)
     
     # Resume from checkpoint if specified
     start_epoch = 0

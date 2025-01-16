@@ -71,5 +71,21 @@ python train.py --colmap_dir data/chair --checkpoint_dir data/chair/checkpoints
 ```
 
 ### Compare with the original 3DGS Implementation
+
 Since we use a pure PyTorch implementation, the training speed and GPU memory usage are far from satisfactory. Also, we do not implement some crucial parts like adaptive Gaussian densification scheme. Run the [original 3DGS implementation](https://github.com/graphdeco-inria/gaussian-splatting) with the same dataset to compare the results.
 
+### 结果展示
+
+在本次实验中主要是完成了从sfm-mvs获取初始点云后优化3dgs点属性的代码补充，涉及到三维协方差的计算->2d协方差投影近似->图像像素根据渲染方程渲染图像并结合GT图像反向优化的过程，没有自适应分裂复制的过程，但是由于初始点云较为密集因此最终训练结果与GT图像较为接近，以下是对lego图像4倍下采样后重建3dgs场并渲染新视图的结果：
+
+![lego](pics/debug_rendering.gif)
+
+### 结课大作业
+
+最终的汇报我们选择了 EVER论文，主要是尝试结合NeRF中的体密度用基于体密度的渲染方程以及逆射线计算交点的方法优化原始3dgs中光栅化渲染的深度 抖动与颜色闪烁问题，伪代码基于本次作业见ellipsoid_model.py,ellipsoid_renderer.py和train_ellipsoid.py。EVER的核心改进见下图：
+
+![EVER](pics/EVER1.png)
+
+![img](pics/EVER2.png)
+
+更多详细内容见面ppt
